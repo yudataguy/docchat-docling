@@ -33,7 +33,8 @@ class ResearchAgent:
         - Answer the following question using only the provided context.
         - Be clear, concise, and factual.
         - Return as much information as you can get from the context.
-        
+        - When referencing specific information, cite the source using [Source X, Page Y] format.
+
         **Question:** {question}
         **Context:**
         {context}
@@ -42,14 +43,35 @@ class ResearchAgent:
         """
         return prompt
 
+    def _build_context_with_sources(self, documents: List[Document]) -> tuple:
+        """Build context string with source annotations and extract unique sources."""
+        context_parts = []
+        sources = []
+
+        for i, doc in enumerate(documents):
+            source = doc.metadata.get("source", "Unknown")
+            page = doc.metadata.get("page")
+
+            # Build source reference
+            if page:
+                source_ref = f"[Source {i+1}: {source}, Page {page}]"
+                sources.append({"index": i+1, "source": source, "page": page})
+            else:
+                source_ref = f"[Source {i+1}: {source}]"
+                sources.append({"index": i+1, "source": source, "page": None})
+
+            context_parts.append(f"{source_ref}\n{doc.page_content}")
+
+        return "\n\n".join(context_parts), sources
+
     def generate(self, question: str, documents: List[Document]) -> Dict:
         """
         Generate an initial answer using the provided documents.
         """
         print(f"ResearchAgent.generate called with question='{question}' and {len(documents)} documents.")
 
-        # Combine the top document contents into one string
-        context = "\n\n".join([doc.page_content for doc in documents])
+        # Build context with source annotations
+        context, sources = self._build_context_with_sources(documents)
         print(f"Combined context length: {len(context)} characters.")
 
         # Create a prompt for the LLM
@@ -78,5 +100,6 @@ class ResearchAgent:
 
         return {
             "draft_answer": draft_answer,
-            "context_used": context
+            "context_used": context,
+            "sources": sources
         }

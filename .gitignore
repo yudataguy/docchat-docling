@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+*.pkl
 .env
 chroma_db/
 vector_cache/

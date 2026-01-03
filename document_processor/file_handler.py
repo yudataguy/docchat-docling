@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List
 from docling.document_converter import DocumentConverter
 from langchain_text_splitters import MarkdownHeaderTextSplitter
+from langchain.schema import Document
 from config import constants
 from config.settings import settings
 from utils.logging import logger
@@ -59,15 +60,54 @@ class DocumentProcessor:
         return all_chunks
 
     def _process_file(self, file) -> List:
-        """Original processing logic with Docling"""
+        """Process file with Docling and extract page metadata."""
         if not file.name.endswith(('.pdf', '.docx', '.txt', '.md')):
             logger.warning(f"Skipping unsupported file type: {file.name}")
             return []
 
+        filename = os.path.basename(file.name)
         converter = DocumentConverter()
-        markdown = converter.convert(file.name).document.export_to_markdown()
+        result = converter.convert(file.name)
+        doc = result.document
+
+        # Build page mapping from document items
+        page_content_map = {}  # Maps content snippets to page numbers
+        for item, _level in doc.iterate_items():
+            if hasattr(item, 'prov') and item.prov:
+                for prov in item.prov:
+                    if hasattr(prov, 'page_no') and hasattr(item, 'text'):
+                        # Store first 100 chars as key for matching
+                        snippet = item.text[:100] if item.text else ""
+                        if snippet:
+                            page_content_map[snippet] = prov.page_no
+
+        # Split markdown into chunks
+        markdown = doc.export_to_markdown()
         splitter = MarkdownHeaderTextSplitter(self.headers)
-        return splitter.split_text(markdown)
+        chunks = splitter.split_text(markdown)
+
+        # Add metadata to chunks
+        enriched_chunks = []
+        for chunk in chunks:
+            # Try to find page number by matching content
+            page_no = None
+            content_start = chunk.page_content[:100]
+            for snippet, page in page_content_map.items():
+                if snippet in chunk.page_content or content_start in snippet:
+                    page_no = page
+                    break
+
+            metadata = {
+                "source": filename,
+                "page": page_no,
+                **chunk.metadata
+            }
+            enriched_chunks.append(Document(
+                page_content=chunk.page_content,
+                metadata=metadata
+            ))
+
+        return enriched_chunks
 
     def _generate_hash(self, content: bytes) -> str:
         return hashlib.sha256(content).hexdigest()

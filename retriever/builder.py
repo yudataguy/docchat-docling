@@ -28,7 +28,7 @@ class RetrieverBuilder:
         content = "".join(doc.page_content for doc in docs)
         return hashlib.sha256(content.encode()).hexdigest()[:16]
 
-    def build_hybrid_retriever(self, docs):
+    def build_hybrid_retriever(self, docs, progress_callback=None):
         """Build a hybrid retriever using BM25 and vector-based retrieval."""
         try:
             docs_hash = self._get_docs_hash(docs)
@@ -37,13 +37,19 @@ class RetrieverBuilder:
             # Check if cached vector store exists
             if os.path.exists(persist_path):
                 logger.info(f"Loading cached vector store from {persist_path}")
+                if progress_callback:
+                    progress_callback(0.5, "Loading cached embeddings...")
                 vector_store = Chroma(
                     persist_directory=persist_path,
                     embedding_function=self.embeddings
                 )
             else:
                 # Create new vector store in batches
-                logger.info(f"Embedding {len(docs)} documents in batches of {EMBEDDING_BATCH_SIZE}...")
+                total_batches = (len(docs) - 1) // EMBEDDING_BATCH_SIZE + 1
+                logger.info(f"Embedding {len(docs)} documents in {total_batches} batches...")
+
+                if progress_callback:
+                    progress_callback(0.2, f"Embedding batch 1/{total_batches}...")
 
                 vector_store = Chroma.from_documents(
                     documents=docs[:EMBEDDING_BATCH_SIZE],
@@ -52,9 +58,14 @@ class RetrieverBuilder:
                 )
 
                 for i in range(EMBEDDING_BATCH_SIZE, len(docs), EMBEDDING_BATCH_SIZE):
+                    batch_num = i // EMBEDDING_BATCH_SIZE + 1
+                    if progress_callback:
+                        prog = 0.2 + (0.5 * batch_num / total_batches)
+                        progress_callback(prog, f"Embedding batch {batch_num}/{total_batches}...")
+
                     batch = docs[i:i + EMBEDDING_BATCH_SIZE]
                     vector_store.add_documents(batch)
-                    logger.info(f"Embedded batch {i // EMBEDDING_BATCH_SIZE + 1}/{(len(docs) - 1) // EMBEDDING_BATCH_SIZE + 1}")
+                    logger.info(f"Embedded batch {batch_num}/{total_batches}")
 
             logger.info("Vector store ready.")
             

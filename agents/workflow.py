@@ -14,6 +14,7 @@ class AgentState(TypedDict):
     documents: List[Document]
     draft_answer: str
     verification_report: str
+    sources: List[Dict]
     is_relevant: bool
     retriever: EnsembleRetriever
 
@@ -95,15 +96,17 @@ class AgentWorkflow:
                 documents=documents,
                 draft_answer="",
                 verification_report="",
+                sources=[],
                 is_relevant=False,
                 retriever=retriever
             )
-            
+
             final_state = self.compiled_workflow.invoke(initial_state)
-            
+
             return {
                 "draft_answer": final_state["draft_answer"],
-                "verification_report": final_state["verification_report"]
+                "verification_report": final_state["verification_report"],
+                "sources": final_state.get("sources", [])
             }
         except Exception as e:
             logger.error(f"Workflow execution failed: {e}")
@@ -113,7 +116,10 @@ class AgentWorkflow:
         print(f"[DEBUG] Entered _research_step with question='{state['question']}'")
         result = self.researcher.generate(state["question"], state["documents"])
         print("[DEBUG] Researcher returned draft answer.")
-        return {"draft_answer": result["draft_answer"]}
+        return {
+            "draft_answer": result["draft_answer"],
+            "sources": result.get("sources", [])
+        }
     
     def _verification_step(self, state: AgentState) -> Dict:
         print("[DEBUG] Entered _verification_step. Verifying the draft answer...")
