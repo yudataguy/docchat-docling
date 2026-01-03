@@ -2,6 +2,11 @@ __pycache__/
 *.pyc
 .env
 chroma_db/
+vector_cache/
+document_cache/
+.gradio/
+examples/FAR.pdf
 venv/
 app.log
 .DS_Store
+CLAUDE.md

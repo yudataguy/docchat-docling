@@ -1,33 +1,20 @@
-from ibm_watsonx_ai.foundation_models import ModelInference
-from ibm_watsonx_ai import Credentials, APIClient
+from openai import OpenAI
 from typing import Dict, List
 from langchain.schema import Document
 from config.settings import settings
-import json
 
-credentials = Credentials(
-                   url = "https://us-south.ml.cloud.ibm.com",
-                  )
-client = APIClient(credentials)
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 
 class ResearchAgent:
     def __init__(self):
         """
-        Initialize the research agent with the IBM WatsonX ModelInference.
+        Initialize the research agent with OpenAI.
         """
-        # Initialize the WatsonX ModelInference
-        print("Initializing ResearchAgent with IBM WatsonX ModelInference...")
-        self.model = ModelInference(
-            model_id="meta-llama/llama-3-2-90b-vision-instruct", 
-            credentials=credentials,
-            project_id="skills-network",
-            params={
-                "max_tokens": 300,            # Adjust based on desired response length
-                "temperature": 0.3,           # Controls randomness; lower values make output more deterministic
-            }
-        )
-        print("ModelInference initialized successfully.")
+        print("Initializing ResearchAgent with OpenAI gpt-5.2...")
+        self.model_id = "gpt-5.2"
+        self.max_tokens = 4000  # GPT-5 reasoning models need more tokens
+        print("ResearchAgent initialized successfully.")
 
     def sanitize_response(self, response_text: str) -> str:
         """
@@ -72,25 +59,16 @@ class ResearchAgent:
         # Call the LLM to generate the answer
         try:
             print("Sending prompt to the model...")
-            response = self.model.chat(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt  # Ensure content is a string
-                    }
-                ]
+            response = client.chat.completions.create(
+                model=self.model_id,
+                messages=[{"role": "user", "content": prompt}],
+                max_completion_tokens=self.max_tokens
             )
             print("LLM response received.")
+            llm_response = response.choices[0].message.content.strip()
+            print(f"Raw LLM response:\n{llm_response}")
         except Exception as e:
             print(f"Error during model inference: {e}")
-            raise RuntimeError("Failed to generate answer due to a model error.") from e
-
-        # Extract and process the LLM's response
-        try:
-            llm_response = response['choices'][0]['message']['content'].strip()
-            print(f"Raw LLM response:\n{llm_response}")
-        except (IndexError, KeyError) as e:
-            print(f"Unexpected response structure: {e}")
             llm_response = "I cannot answer this question based on the provided documents."
 
         # Sanitize the response

@@ -1,25 +1,17 @@
-from ibm_watsonx_ai.foundation_models import ModelInference
-from ibm_watsonx_ai import Credentials, APIClient
+from openai import OpenAI
 from config.settings import settings
-import re
 import logging
 
 logger = logging.getLogger(__name__)
 
-credentials = Credentials(
-                   url = "https://us-south.ml.cloud.ibm.com",
-                  )
-client = APIClient(credentials)
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
 
 class RelevanceChecker:
     def __init__(self):
-        # Initialize the WatsonX ModelInference
-        self.model = ModelInference(
-            model_id="ibm/granite-3-3-8b-instruct",
-            credentials=credentials,
-            project_id="skills-network",
-            params={"temperature": 0, "max_tokens": 10},
-        )
+        # Initialize with OpenAI
+        self.model_id = "gpt-5-mini"
+        self.max_tokens = 1000  # GPT-5 reasoning models need more tokens
 
     def check(self, question: str, retriever, k=3) -> str:
         """
@@ -65,35 +57,28 @@ class RelevanceChecker:
 
         # Call the LLM
         try:
-            response = self.model.chat(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt  # Changed from list to string
-                    }
-                ]
+            response = client.chat.completions.create(
+                model=self.model_id,
+                messages=[{"role": "user", "content": prompt}],
+                max_completion_tokens=self.max_tokens
             )
+            llm_response = response.choices[0].message.content.strip().upper()
         except Exception as e:
-            logger.error(f"Error during model inference: {e}")
+            print(f"[RelevanceChecker] Error during model inference: {e}")
             return "NO_MATCH"
 
-        # Extract the content from the response
-        try:
-            llm_response = response['choices'][0]['message']['content'].strip().upper()
-            logger.debug(f"LLM response: {llm_response}")
-        except (IndexError, KeyError) as e:
-            logger.error(f"Unexpected response structure: {e}")
-            return "NO_MATCH"
+        print(f"[RelevanceChecker] Raw response: '{llm_response}'")
 
-        print(f"Checker response: {llm_response}")
-
-        # Validate the response
-        valid_labels = {"CAN_ANSWER", "PARTIAL", "NO_MATCH"}
-        if llm_response not in valid_labels:
-            logger.debug("LLM did not respond with a valid label. Forcing 'NO_MATCH'.")
+        # Parse response - check if any valid label is contained in the response
+        if "CAN_ANSWER" in llm_response:
+            classification = "CAN_ANSWER"
+        elif "PARTIAL" in llm_response:
+            classification = "PARTIAL"
+        elif "NO_MATCH" in llm_response:
             classification = "NO_MATCH"
         else:
-            logger.debug(f"Classification recognized as '{llm_response}'.")
-            classification = llm_response
+            print(f"[RelevanceChecker] Could not parse response, defaulting to PARTIAL")
+            classification = "PARTIAL"  # Default to PARTIAL instead of NO_MATCH
 
+        print(f"[RelevanceChecker] Classification: {classification}")
         return classification

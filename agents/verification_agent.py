@@ -1,31 +1,20 @@
-import json  # Import for JSON serialization
-from ibm_watsonx_ai.foundation_models import ModelInference
-from ibm_watsonx_ai import Credentials, APIClient
+from openai import OpenAI
 from typing import Dict, List
 from langchain.schema import Document
+from config.settings import settings
 
-credentials = Credentials(
-                   url = "https://us-south.ml.cloud.ibm.com",
-                  )
-client = APIClient(credentials)
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
 
 class VerificationAgent:
     def __init__(self):
         """
-        Initialize the verification agent with the IBM WatsonX ModelInference.
+        Initialize the verification agent with OpenAI.
         """
-        # Initialize the WatsonX ModelInference
-        print("Initializing VerificationAgent with IBM WatsonX ModelInference...")
-        self.model = ModelInference(
-            model_id="ibm/granite-4-h-small", 
-            credentials=credentials,
-            project_id="skills-network",
-            params={
-                "max_tokens": 200,            # Adjust based on desired response length
-                "temperature": 0.0,           # Remove randomness for consistency
-            }
-        )
-        print("ModelInference initialized successfully.")
+        print("Initializing VerificationAgent with OpenAI gpt-5-mini...")
+        self.model_id = "gpt-5-mini"
+        self.max_tokens = 2000  # GPT-5 reasoning models need more tokens
+        print("VerificationAgent initialized successfully.")
 
     def sanitize_response(self, response_text: str) -> str:
         """
@@ -153,35 +142,24 @@ class VerificationAgent:
         # Call the LLM to generate the verification report
         try:
             print("Sending prompt to the model...")
-            response = self.model.chat(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt  # Ensure content is a string
-                    }
-                ]
+            response = client.chat.completions.create(
+                model=self.model_id,
+                messages=[{"role": "user", "content": prompt}],
+                max_completion_tokens=self.max_tokens
             )
             print("LLM response received.")
+            llm_response = response.choices[0].message.content.strip()
+            print(f"Raw LLM response:\n{llm_response}")
         except Exception as e:
             print(f"Error during model inference: {e}")
-            raise RuntimeError("Failed to verify answer due to a model error.") from e
-
-        # Extract and process the LLM's response
-        try:
-            llm_response = response['choices'][0]['message']['content'].strip()
-            print(f"Raw LLM response:\n{llm_response}")
-        except (IndexError, KeyError) as e:
-            print(f"Unexpected response structure: {e}")
             verification_report = {
                 "Supported": "NO",
                 "Unsupported Claims": [],
                 "Contradictions": [],
                 "Relevant": "NO",
-                "Additional Details": "Invalid response structure from the model."
+                "Additional Details": f"Model error: {str(e)}"
             }
             verification_report_formatted = self.format_verification_report(verification_report)
-            print(f"Verification report:\n{verification_report_formatted}")
-            print(f"Context used: {context}")
             return {
                 "verification_report": verification_report_formatted,
                 "context_used": context
